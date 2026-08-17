@@ -1,0 +1,114 @@
+{% extends 'translator/base.html' %}
+{% load static %}
+{% block title %}Favorites — LinguaBridge{% endblock %}
+
+{% block content %}
+<section class="page-section">
+    <div class="page-header">
+        <h1 class="page-title">⭐ Favorites</h1>
+        <p class="page-sub">{{ favorites|length }} saved translation{{ favorites|pluralize }}</p>
+    </div>
+
+    {% if favorites %}
+    <div class="favs-grid">
+        {% for fav in favorites %}
+        <div class="fav-card" id="fav-{{ fav.id }}">
+            <div class="fav-header">
+                <div class="fav-langs">
+                    <span class="fav-lang-src">{{ fav.translation.source_language_name }}</span>
+                    <span class="fav-arrow">→</span>
+                    <span class="fav-lang-tgt">{{ fav.translation.target_language_name }}</span>
+                </div>
+                <!-- ✅ Fixed: use data attribute instead of inline {{ fav.id }} in onclick -->
+                <button class="fav-del-btn del-btn" data-id="{{ fav.id }}" title="Remove">✕</button>
+            </div>
+            <div class="fav-body">
+                <p class="fav-source">{{ fav.translation.source_text|truncatechars:150 }}</p>
+                <div class="fav-sep">⬇</div>
+                <p class="fav-translated">{{ fav.translation.translated_text|truncatechars:150 }}</p>
+            </div>
+            <div class="fav-footer">
+                <span class="fav-meta">{{ fav.translation.character_count }} chars · {{ fav.created_at|date:"M d, Y" }}</span>
+                <div class="fav-actions">
+                    <!-- ✅ Fixed: use data attributes instead of inline JS values -->
+                    <button class="icon-btn copy-btn"
+                        data-text="{{ fav.translation.translated_text|escapejs }}"
+                        title="Copy">📄 Copy</button>
+                    <button class="icon-btn reuse-btn"
+                        data-text="{{ fav.translation.source_text|escapejs }}"
+                        data-src="{{ fav.translation.source_language }}"
+                        data-tgt="{{ fav.translation.target_language }}"
+                        title="Re-translate">↩️ Re-use</button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">⭐</div>
+        <h3>No favorites yet</h3>
+        <p>Star translations from the translator or history page to save them here.</p>
+        <a href="{% url 'translator:index' %}" class="cta-btn">Start Translating</a>
+    </div>
+    {% endif %}
+</section>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+
+// Delete favorite — using data-id attribute
+document.querySelectorAll('.del-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        if (!confirm('Remove from favorites?')) return;
+        fetch('/delete-fav/' + id + '/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF_TOKEN }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) {
+                var card = document.getElementById('fav-' + id);
+                if (card) card.remove();
+                showToast('⭐ Removed from favorites');
+            }
+        })
+        .catch(function() { showToast('⚠️ Could not remove'); });
+    });
+});
+
+// Copy translation — using data-text attribute
+document.querySelectorAll('.copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var text = this.getAttribute('data-text');
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('📋 Copied!');
+        });
+    });
+});
+
+// Re-use translation — using data attributes
+document.querySelectorAll('.reuse-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var text = this.getAttribute('data-text');
+        var src  = this.getAttribute('data-src');
+        var tgt  = this.getAttribute('data-tgt');
+        sessionStorage.setItem('reuse', JSON.stringify({ text: text, src: src, tgt: tgt }));
+        window.location.href = '/';
+    });
+});
+
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+</script>
+{% endblock %}

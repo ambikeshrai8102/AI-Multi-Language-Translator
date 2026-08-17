@@ -1,0 +1,255 @@
+{% extends 'translator/base.html' %}
+{% load static %}
+{% block title %}Batch Translate — LinguaBridge{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <div class="page-header">
+    <h1 class="page-title">⚡ Batch Translate</h1>
+    <p class="page-sub">Translate one text into up to 8 languages simultaneously</p>
+  </div>
+
+  <div class="batch-card">
+
+    <!-- Source Input -->
+    <div class="batch-source-wrap">
+      <div class="batch-source-header">
+        <label class="lang-label">SOURCE TEXT</label>
+        <div class="panel-actions">
+          <span class="char-count" id="batchCharCount">0 / 5000</span>
+          <select id="batchSourceLang" class="lang-select" style="width:200px">
+            <option value="auto" selected>🔍 Auto Detect</option>
+            {% for lang in languages %}
+            <option value="{{ lang.code }}">{{ lang.flag }} {{ lang.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <textarea id="batchSourceText" class="text-area batch-textarea"
+        placeholder="Enter text to translate into multiple languages at once…"
+        maxlength="5000" rows="5"></textarea>
+    </div>
+
+    <!-- Language Picker -->
+    <div class="batch-lang-picker">
+      <div class="batch-picker-header">
+        <span class="lang-label">SELECT TARGET LANGUAGES (max 8)</span>
+        <div class="batch-picker-actions">
+          <button class="ghost-btn" onclick="selectPreset('european')">🌍 European</button>
+          <button class="ghost-btn" onclick="selectPreset('asian')">🌏 Asian</button>
+          <button class="ghost-btn" onclick="selectPreset('popular')">⭐ Popular</button>
+          <button class="ghost-btn danger" onclick="clearAll()">✕ Clear</button>
+        </div>
+      </div>
+      <div class="batch-lang-grid" id="batchLangGrid">
+        {% for lang in languages %}
+        <label class="batch-lang-item">
+          <input type="checkbox" class="batch-check" value="{{ lang.code }}" data-name="{{ lang.name }}">
+          <span>{{ lang.flag }} {{ lang.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="batch-selected-bar">
+        <span id="batchSelectedCount" class="selected-count">0 languages selected</span>
+      </div>
+    </div>
+
+    <!-- Action -->
+    <div class="translate-action">
+      <button class="translate-btn" id="batchBtn">
+        <span class="btn-icon">⚡</span>
+        <span class="btn-text">Translate to All</span>
+        <span class="btn-loader" style="display:none">⟳</span>
+      </button>
+      <div class="keyboard-hint">Results appear as cards below</div>
+    </div>
+
+    <!-- Results -->
+    <div id="batchResults" class="batch-results" style="display:none"></div>
+
+    <!-- Export -->
+    <div id="batchExportBar" class="export-bar" style="display:none">
+      <button class="ghost-btn" onclick="exportBatchCSV()">📥 Export CSV</button>
+      <button class="ghost-btn" onclick="exportBatchText()">📄 Export Text</button>
+      <button class="ghost-btn" onclick="copyAllBatch()">📋 Copy All</button>
+    </div>
+
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+const BATCH_URL = '{% url "translator:batch_translate" %}';
+
+// Build LANGUAGES array from DOM checkboxes — no need for languages_json context variable
+const LANGUAGES = Array.from(document.querySelectorAll('.batch-check')).map(function(cb) {
+    return {
+        code: cb.value,
+        name: cb.getAttribute('data-name'),
+        flag: cb.closest('label').querySelector('span').textContent.trim().split(' ')[0]
+    };
+});
+
+let lastBatchResults = [];
+
+// Char count
+document.getElementById('batchSourceText').addEventListener('input', function() {
+    document.getElementById('batchCharCount').textContent = this.value.length + ' / 5000';
+});
+
+// Checkbox counter
+document.querySelectorAll('.batch-check').forEach(function(cb) {
+    cb.addEventListener('change', updateSelectedCount);
+});
+
+function updateSelectedCount() {
+    const checked = document.querySelectorAll('.batch-check:checked');
+    const n = checked.length;
+    document.getElementById('batchSelectedCount').textContent =
+        n === 0 ? '0 languages selected' :
+        n === 1 ? '1 language selected' :
+        n + ' languages selected' + (n >= 8 ? ' (max)' : '');
+    if (n >= 8) {
+        document.querySelectorAll('.batch-check:not(:checked)').forEach(function(cb) { cb.disabled = true; });
+    } else {
+        document.querySelectorAll('.batch-check').forEach(function(cb) { cb.disabled = false; });
+    }
+}
+
+function selectPreset(type) {
+    document.querySelectorAll('.batch-check').forEach(function(cb) { cb.checked = false; });
+    const presets = {
+        european: ['es','fr','de','it','pt','nl','ru','pl'],
+        asian:    ['zh-cn','ja','ko','hi','ar','th','vi','id'],
+        popular:  ['es','fr','de','zh-cn','ja','ar','hi','ru'],
+    };
+    (presets[type] || []).forEach(function(code) {
+        const cb = document.querySelector('.batch-check[value="' + code + '"]');
+        if (cb) cb.checked = true;
+    });
+    updateSelectedCount();
+}
+
+function clearAll() {
+    document.querySelectorAll('.batch-check').forEach(function(cb) {
+        cb.checked = false;
+        cb.disabled = false;
+    });
+    updateSelectedCount();
+}
+
+document.getElementById('batchBtn').addEventListener('click', async function() {
+    const text    = document.getElementById('batchSourceText').value.trim();
+    const checked = Array.from(document.querySelectorAll('.batch-check:checked')).map(function(cb) { return cb.value; });
+
+    if (!text)           return showToast('⚠️ Enter some text first');
+    if (!checked.length) return showToast('⚠️ Select at least one language');
+
+    this.disabled = true;
+    this.querySelector('.btn-text').textContent = 'Translating…';
+    this.querySelector('.btn-loader').style.display = 'inline-block';
+
+    const resultsDiv = document.getElementById('batchResults');
+    resultsDiv.style.display = 'grid';
+    resultsDiv.innerHTML = checked.map(function(code) {
+        const lang = LANGUAGES.find(function(l) { return l.code === code; }) || { name: code, flag: '🌐' };
+        return '<div class="batch-result-card loading-card" id="br-' + code + '">'
+             + '<div class="batch-result-lang">' + lang.flag + ' ' + lang.name + '</div>'
+             + '<div class="batch-result-text" style="color:var(--text-2)">Translating…</div>'
+             + '</div>';
+    }).join('');
+
+    try {
+        const resp = await fetch(BATCH_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({
+                text: text,
+                source_lang: document.getElementById('batchSourceLang').value,
+                target_langs: checked
+            })
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            lastBatchResults = data.results;
+            data.results.forEach(function(r) {
+                const card = document.getElementById('br-' + r.lang_code);
+                if (!card) return;
+                card.classList.remove('loading-card');
+                if (r.error) {
+                    card.querySelector('.batch-result-text').innerHTML = '<span style="color:var(--danger)">⚠️ ' + r.error + '</span>';
+                } else {
+                    card.querySelector('.batch-result-text').textContent = r.translated;
+                    const btn = document.createElement('button');
+                    btn.className = 'batch-result-copy';
+                    btn.textContent = '📋 Copy';
+                    btn.addEventListener('click', function() { copyText(r.translated); });
+                    card.appendChild(btn);
+                }
+            });
+            document.getElementById('batchExportBar').style.display = 'flex';
+        } else {
+            resultsDiv.innerHTML = '<p style="color:var(--danger);padding:1rem">⚠️ ' + data.error + '</p>';
+        }
+    } catch(e) {
+        resultsDiv.innerHTML = '<p style="color:var(--danger);padding:1rem">⚠️ Network error: ' + e.message + '</p>';
+    } finally {
+        this.disabled = false;
+        this.querySelector('.btn-text').textContent = 'Translate to All';
+        this.querySelector('.btn-loader').style.display = 'none';
+    }
+});
+
+function copyText(text) {
+    navigator.clipboard.writeText(text).then(function() { showToast('📋 Copied!'); });
+}
+
+function exportBatchCSV() {
+    const src = document.getElementById('batchSourceText').value;
+    const rows = [['Language', 'Translation', 'Source']];
+    lastBatchResults.forEach(function(r) {
+        if (!r.error) rows.push([r.lang_name, r.translated.replace(/"/g, '""'), src.replace(/"/g, '""')]);
+    });
+    const csv = rows.map(function(r) { return r.map(function(c) { return '"' + c + '"'; }).join(','); }).join('\n');
+    downloadFile('batch_translations.csv', csv, 'text/csv');
+    showToast('📥 CSV exported!');
+}
+
+function exportBatchText() {
+    const src = document.getElementById('batchSourceText').value;
+    let txt = 'LinguaBridge Batch Translation\nSource: ' + src + '\n' + '─'.repeat(50) + '\n\n';
+    lastBatchResults.forEach(function(r) {
+        if (!r.error) txt += r.flag + ' ' + r.lang_name + ':\n' + r.translated + '\n\n';
+    });
+    downloadFile('batch_translations.txt', txt, 'text/plain');
+    showToast('📄 Text exported!');
+}
+
+function copyAllBatch() {
+    const lines = lastBatchResults
+        .filter(function(r) { return !r.error; })
+        .map(function(r) { return r.lang_name + ': ' + r.translated; })
+        .join('\n');
+    navigator.clipboard.writeText(lines).then(function() { showToast('📋 All copied!'); });
+}
+
+function downloadFile(filename, content, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: type }));
+    a.download = filename;
+    a.click();
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+</script>
+{% endblock %}

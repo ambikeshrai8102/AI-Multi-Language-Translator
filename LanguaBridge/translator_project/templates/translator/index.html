@@ -1,0 +1,231 @@
+{% extends 'translator/base.html' %}
+{% load static %}
+{% block title %}LinguaBridge — AI Translator{% endblock %}
+{% block content %}
+
+<section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+        <div class="hero-badge">✦ Powered by 100+ Languages</div>
+        <h1 class="hero-title">Translate <span class="hero-accent">Anything</span><br>Instantly</h1>
+        <p class="hero-sub">Break language barriers with AI-powered translation. Accurate, fast, and free.</p>
+        <div class="stats-row">
+            <div class="stat-pill">
+                <span class="stat-number" id="stat-translations">{{ stats.total_translations }}</span>
+                <span class="stat-label">Translations Done</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-number" id="stat-chars">{{ stats.total_characters }}</span>
+                <span class="stat-label">Characters Translated</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-number" id="stat-langs">{{ stats.languages_used }}</span>
+                <span class="stat-label">Languages Used</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Tab Navigation -->
+<div class="mode-tabs">
+    <button class="mode-tab active" id="tabSingle" onclick="switchMode('single')">⚡ Single</button>
+    <button class="mode-tab" id="tabBatch" onclick="switchMode('batch')">🌍 Multi-Language</button>
+</div>
+
+<!-- ═══ SINGLE TRANSLATION MODE ═══ -->
+<section class="translator-section" id="modeSingle">
+    <div class="translator-card">
+        <div class="lang-bar">
+            <div class="lang-selector-wrap">
+                <label class="lang-label">FROM</label>
+                <select id="sourceLang" class="lang-select">
+                    <option value="auto" selected>🔍 Auto Detect</option>
+                    {% for lang in languages %}
+                    <option value="{{ lang.code }}">{{ lang.flag }} {{ lang.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="swap-btn" id="swapBtn" title="Swap languages">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+                </svg>
+            </button>
+            <div class="lang-selector-wrap">
+                <label class="lang-label">TO</label>
+                <select id="targetLang" class="lang-select">
+                    {% for lang in languages %}
+                    <option value="{{ lang.code }}" {% if lang.code == 'es' %}selected{% endif %}>{{ lang.flag }} {{ lang.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="quick-langs">
+            <span class="quick-label">Quick:</span>
+            <button class="quick-btn" data-lang="es">🇪🇸 Spanish</button>
+            <button class="quick-btn" data-lang="fr">🇫🇷 French</button>
+            <button class="quick-btn" data-lang="de">🇩🇪 German</button>
+            <button class="quick-btn" data-lang="ja">🇯🇵 Japanese</button>
+            <button class="quick-btn" data-lang="zh-cn">🇨🇳 Chinese</button>
+            <button class="quick-btn" data-lang="ar">🇸🇦 Arabic</button>
+            <button class="quick-btn" data-lang="hi">🇮🇳 Hindi</button>
+            <button class="quick-btn" data-lang="ru">🇷🇺 Russian</button>
+            <button class="quick-btn" data-lang="pt">🇵🇹 Portuguese</button>
+            <button class="quick-btn" data-lang="ko">🇰🇷 Korean</button>
+        </div>
+
+        <div class="text-areas">
+            <div class="text-panel source-panel">
+                <div class="panel-header">
+                    <span class="panel-label" id="sourceLangLabel">Source Text</span>
+                    <div class="panel-actions">
+                        <span class="char-count" id="charCount">0 / 5000</span>
+                        <button class="icon-btn" id="clearBtn" title="Clear">✕</button>
+                        <button class="icon-btn" id="pastBtn" title="Paste from clipboard">📋</button>
+                        <button class="icon-btn" id="speakSourceBtn" title="Text to speech">🔊</button>
+                    </div>
+                </div>
+                <textarea id="sourceText" class="text-area" placeholder="Type or paste text here to translate…" maxlength="5000" rows="8"></textarea>
+                <div class="detected-lang" id="detectedLang" style="display:none">
+                    <span>🔍</span> <span id="detectedLangText">Detected: English</span>
+                </div>
+            </div>
+
+            <div class="divider-line"></div>
+
+            <div class="text-panel result-panel">
+                <div class="panel-header">
+                    <span class="panel-label" id="targetLangLabel">Translation</span>
+                    <div class="panel-actions">
+                        <button class="icon-btn" id="copyBtn" title="Copy translation">📄</button>
+                        <button class="icon-btn" id="speakTargetBtn" title="Text to speech">🔊</button>
+                        <button class="icon-btn" id="favoriteBtn" title="Save to favorites">⭐</button>
+                    </div>
+                </div>
+                <div class="text-area result-area" id="resultArea">
+                    <span class="placeholder-text">Translation will appear here…</span>
+                </div>
+                <div class="translation-meta" id="translationMeta" style="display:none">
+                    <span class="meta-badge">✓ Translated by Claude AI</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="translate-action">
+            <button class="translate-btn" id="translateBtn">
+                <span class="btn-icon">🌐</span>
+                <span class="btn-text">Translate Now</span>
+                <span class="btn-spinner" id="btnSpinner" style="display:none"></span>
+            </button>
+            <div class="keyboard-hint">Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to translate</div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ BATCH / MULTI-LANGUAGE MODE ═══ -->
+<section class="translator-section" id="modeBatch" style="display:none">
+    <div class="translator-card">
+        <div class="batch-header-bar">
+            <div class="lang-selector-wrap" style="max-width:260px">
+                <label class="lang-label">SOURCE LANGUAGE</label>
+                <select id="batchSourceLang" class="lang-select">
+                    <option value="auto" selected>🔍 Auto Detect</option>
+                    {% for lang in languages %}
+                    <option value="{{ lang.code }}">{{ lang.flag }} {{ lang.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="batch-info">
+                <span class="batch-info-text">Select up to 8 target languages</span>
+            </div>
+        </div>
+
+        <div class="batch-lang-picker">
+            <label class="lang-label" style="margin-bottom:.5rem;display:block">TRANSLATE TO (select multiple)</label>
+            <div class="batch-lang-grid" id="batchLangGrid">
+                {% for lang in languages %}
+                <label class="batch-lang-item">
+                    <input type="checkbox" value="{{ lang.code }}" class="batch-check"> {{ lang.flag }} {{ lang.name }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="text-panel source-panel" style="border-top:1px solid var(--border)">
+            <div class="panel-header">
+                <span class="panel-label">Source Text</span>
+                <span class="char-count" id="batchCharCount">0 / 5000</span>
+            </div>
+            <textarea id="batchSourceText" class="text-area" placeholder="Enter text to translate to all selected languages…" rows="5" maxlength="5000"></textarea>
+        </div>
+
+        <div class="translate-action">
+            <button class="translate-btn" id="batchTranslateBtn">
+                <span class="btn-icon">🌍</span>
+                <span class="btn-text">Translate to All</span>
+                <span class="btn-spinner" id="batchBtnSpinner" style="display:none"></span>
+            </button>
+        </div>
+
+        <div id="batchResults" class="batch-results" style="display:none"></div>
+    </div>
+</section>
+
+<!-- Text Tools Panel -->
+<section class="tools-section">
+  <div class="tools-bar" id="toolsBar" style="display:none">
+    <div class="tool-chip"><span class="tool-label">Words</span><span class="tool-val" id="toolWords">0</span></div>
+    <div class="tool-chip"><span class="tool-label">Characters</span><span class="tool-val" id="toolChars">0</span></div>
+    <div class="tool-chip"><span class="tool-label">Sentences</span><span class="tool-val" id="toolSentences">0</span></div>
+    <div class="tool-chip"><span class="tool-label">Read time</span><span class="tool-val" id="toolReadTime">0s</span></div>
+    <div class="tool-chip"><span class="tool-label">Speak time</span><span class="tool-val" id="toolSpeakTime">0s</span></div>
+  </div>
+</section>
+
+<!-- Recent Translations -->
+{% if recent_translations %}
+<section class="recent-section">
+    <div class="section-header">
+        <h2 class="section-title">Recent Translations</h2>
+        <a href="{% url 'translator:history' %}" class="see-all-link">View All →</a>
+    </div>
+    <div class="recent-grid">
+        {% for t in recent_translations %}
+        <div class="recent-card" onclick="loadTranslation('{{ t.source_text|escapejs }}', '{{ t.source_language }}', '{{ t.target_language }}')">
+            <div class="recent-langs">
+                <span class="recent-lang src">{{ t.source_language_name }}</span>
+                <span class="arrow-icon">→</span>
+                <span class="recent-lang tgt">{{ t.target_language_name }}</span>
+            </div>
+            <p class="recent-src-text">{{ t.source_text|truncatechars:70 }}</p>
+            <p class="recent-tgt-text">{{ t.translated_text|truncatechars:70 }}</p>
+            <span class="recent-meta">{{ t.created_at|timesince }} ago · {{ t.character_count }} chars</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.CSRF_TOKEN = '{{ csrf_token }}';
+    window.TRANSLATE_URL = '{% url "translator:translate" %}';
+    window.BATCH_URL = '{% url "translator:batch_translate" %}';
+    window.FAVORITE_URL = '{% url "translator:add_favorite" %}';
+    window.STATS_URL = '{% url "translator:stats" %}';
+    window.PREFILL_PHRASE = '{{ prefill_phrase|default:""|escapejs }}';
+
+    window.addEventListener('DOMContentLoaded', function() {
+        if (window.PREFILL_PHRASE) {
+            const ta = document.getElementById('sourceText');
+            if (ta) {
+                ta.value = window.PREFILL_PHRASE;
+                ta.dispatchEvent(new Event('input'));
+            }
+        }
+    });
+</script>
+{% endblock %}

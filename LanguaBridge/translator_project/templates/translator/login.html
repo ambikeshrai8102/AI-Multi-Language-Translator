@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — LinguaBridge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;background:var(--bg)}
+        .auth-box{background:var(--bg-1);border:1px solid var(--border);border-radius:20px;padding:2.5rem;width:100%;max-width:420px;box-shadow:var(--shadow),var(--glow);animation:fadeUp .5s ease both}
+        .auth-logo{text-align:center;margin-bottom:2rem}
+        .auth-logo-icon{font-size:2.5rem;display:block;margin-bottom:.4rem}
+        .auth-logo-name{font-family:var(--font-d);font-size:1.5rem;font-weight:800;color:var(--text)}
+        .auth-title{font-family:var(--font-d);font-size:1.4rem;font-weight:700;margin-bottom:.3rem}
+        .auth-sub{color:var(--text-2);font-size:.88rem;margin-bottom:1.75rem}
+        .form-group{margin-bottom:1.1rem}
+        .form-label{display:block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-2);margin-bottom:.4rem}
+        .form-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font-b);font-size:.95rem;padding:.7rem 1rem;transition:var(--t);box-sizing:border-box}
+        .form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+        .auth-btn{width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:var(--font-d);font-size:1rem;font-weight:700;padding:.8rem;cursor:pointer;transition:var(--t);margin-top:.5rem}
+        .auth-btn:hover{background:#2563eb;transform:translateY(-1px)}
+        .auth-footer{text-align:center;margin-top:1.5rem;font-size:.88rem;color:var(--text-2)}
+        .auth-footer a{color:var(--accent);text-decoration:none;font-weight:600}
+        .auth-footer a:hover{text-decoration:underline}
+        .msg-list{list-style:none;margin-bottom:1.2rem;padding:0}
+        .msg-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;border-radius:8px;padding:.6rem .9rem;font-size:.85rem;margin-bottom:.4rem}
+        .msg-success{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399;border-radius:8px;padding:.6rem .9rem;font-size:.85rem;margin-bottom:.4rem}
+    </style>
+</head>
+<body>
+<div class="auth-page">
+    <div class="auth-box">
+
+        <div class="auth-logo">
+            <span class="auth-logo-icon">🌐</span>
+            <span class="auth-logo-name">LinguaBridge</span>
+        </div>
+
+        <h1 class="auth-title">Welcome Back</h1>
+        <p class="auth-sub">Sign in to continue translating</p>
+
+        {% if messages %}
+        <ul class="msg-list">
+            {% for msg in messages %}
+            <li class="{% if msg.tags == 'error' %}msg-error{% else %}msg-success{% endif %}">
+                {{ msg }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        <form method="POST" action="{% url 'translator:login' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" name="username" class="form-input"
+                    placeholder="Enter your username" required autofocus
+                    value="{{ request.POST.username }}">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="password" class="form-input"
+                    placeholder="Enter your password" required>
+            </div>
+
+            <button type="submit" class="auth-btn">🔑 Sign In</button>
+        </form>
+
+        <div class="auth-footer">
+            Don't have an account?
+            <a href="{% url 'translator:register' %}">Create one →</a>
+        </div>
+
+    </div>
+</div>
+</body>
+</html>

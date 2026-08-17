@@ -1,0 +1,177 @@
+{% extends 'translator/base.html' %}
+{% load static %}
+{% block title %}History — LinguaBridge{% endblock %}
+
+{% block content %}
+<section class="page-section">
+
+    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+        <div>
+            <h1 class="page-title">📜 Translation History</h1>
+            <p class="page-sub">{{ translations|length }} translation{{ translations|pluralize }} shown</p>
+        </div>
+        <a href="{% url 'translator:export_csv' %}" class="ghost-btn" style="text-decoration:none;align-self:center">📥 Export CSV</a>
+    </div>
+
+    <!-- Filter Bar -->
+    <form method="GET" class="filter-bar">
+        <div class="filter-input-wrap">
+            <span class="filter-icon">🔍</span>
+            <input type="text" name="q" value="{{ query }}" placeholder="Search translations…" class="filter-input">
+        </div>
+        <select name="lang" class="filter-select">
+            <option value="">All Languages</option>
+            {% for lang in used_langs %}
+            <option value="{{ lang.target_language }}" {% if lang.target_language == lang_filter %}selected{% endif %}>
+                {{ lang.target_language_name }}
+            </option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="filter-btn">Filter</button>
+        {% if query or lang_filter %}
+        <a href="{% url 'translator:history' %}" class="filter-clear">Clear</a>
+        {% endif %}
+    </form>
+
+    {% if translations %}
+    <div class="history-table-wrap">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>From → To</th>
+                    <th>Source Text</th>
+                    <th>Translation</th>
+                    <th>Chars</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in translations %}
+                <tr class="history-row" id="row-{{ t.id }}">
+                    <td class="td-num">{{ forloop.counter }}</td>
+                    <td class="td-pair">
+                        <span class="pair-src">{{ t.source_language_name|truncatechars:10 }}</span>
+                        <span class="pair-arrow">→</span>
+                        <span class="pair-tgt">{{ t.target_language_name|truncatechars:10 }}</span>
+                    </td>
+                    <td class="td-text">{{ t.source_text|truncatechars:90 }}</td>
+                    <td class="td-text translated">{{ t.translated_text|truncatechars:90 }}</td>
+                    <td class="td-num">{{ t.character_count }}</td>
+                    <td class="td-date">{{ t.created_at|date:"M d, H:i" }}</td>
+                    <td class="td-actions">
+                        <!-- ✅ All onclick removed — data attributes used instead -->
+                        <button class="action-btn btn-reuse"
+                            data-text="{{ t.source_text|escapejs }}"
+                            data-src="{{ t.source_language }}"
+                            data-tgt="{{ t.target_language }}"
+                            title="Re-use">↩️</button>
+
+                        <button class="action-btn btn-copy"
+                            data-text="{{ t.translated_text|escapejs }}"
+                            title="Copy">📄</button>
+
+                        <button class="action-btn btn-fav"
+                            data-id="{{ t.id }}"
+                            title="Favorite">⭐</button>
+
+                        <button class="action-btn btn-del"
+                            data-id="{{ t.id }}"
+                            title="Delete">🗑️</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>No translations found</h3>
+        <p>{% if query %}Try a different search term.{% else %}Start translating to build your history!{% endif %}</p>
+        <a href="{% url 'translator:index' %}" class="cta-btn">Start Translating</a>
+    </div>
+    {% endif %}
+
+</section>
+
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var CSRF_TOKEN   = '{{ csrf_token }}';
+var FAVORITE_URL = '{% url "translator:add_favorite" %}';
+
+// ── Re-use translation ──────────────────────────────
+document.querySelectorAll('.btn-reuse').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var text = this.getAttribute('data-text');
+        var src  = this.getAttribute('data-src');
+        var tgt  = this.getAttribute('data-tgt');
+        sessionStorage.setItem('reuse', JSON.stringify({ text: text, src: src, tgt: tgt }));
+        window.location.href = '/';
+    });
+});
+
+// ── Copy translation ────────────────────────────────
+document.querySelectorAll('.btn-copy').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var text = this.getAttribute('data-text');
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('📋 Copied!');
+        });
+    });
+});
+
+// ── Save to favorites ───────────────────────────────
+document.querySelectorAll('.btn-fav').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        fetch(FAVORITE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({ translation_id: parseInt(id) })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            showToast(d.created ? '⭐ Saved to favorites!' : 'Already in favorites');
+        })
+        .catch(function() { showToast('⚠️ Could not save'); });
+    });
+});
+
+// ── Delete translation ──────────────────────────────
+document.querySelectorAll('.btn-del').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        if (!confirm('Delete this translation?')) return;
+        fetch('/delete/' + id + '/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF_TOKEN }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) {
+                var row = document.getElementById('row-' + id);
+                if (row) row.remove();
+                showToast('🗑️ Deleted');
+            }
+        })
+        .catch(function() { showToast('⚠️ Could not delete'); });
+    });
+});
+
+// ── Toast ───────────────────────────────────────────
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+</script>
+{% endblock %}

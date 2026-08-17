@@ -1,0 +1,119 @@
+{% extends 'translator/base.html' %}
+{% block title %}Phrasebook — LinguaBridge{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <div class="page-header">
+    <h1 class="page-title">📖 Phrasebook</h1>
+    <p class="page-sub">Common phrases translated instantly — click any phrase to translate it</p>
+  </div>
+
+  <div class="phrasebook-controls">
+    <div class="pb-control-row">
+      <div>
+        <label class="lang-label">TRANSLATE TO</label>
+        <select id="pbTargetLang" class="lang-select" style="width:220px">
+          {% for lang in languages %}
+          <option value="{{ lang.code }}" {% if lang.code == 'es' %}selected{% endif %}>{{ lang.flag }} {{ lang.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="translate-btn" id="pbTranslateAll" style="align-self:flex-end">
+        <span class="btn-icon">🌐</span>
+        <span class="btn-text">Translate All Phrases</span>
+        <span class="btn-loader" style="display:none">⟳</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="pb-categories">
+    {% for category in categories %}
+    <div class="pb-cat-section">
+      <h2 class="pb-cat-title">{{ category.icon }} {{ category.name }}</h2>
+      <div class="pb-phrase-grid">
+        {% for phrase in category.phrases %}
+        <div class="pb-phrase-card" data-phrase="{{ phrase }}">
+          <div class="pb-phrase-en">{{ phrase }}</div>
+          <div class="pb-phrase-translated" id="pt-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">
+            <span class="pb-placeholder">Click to translate</span>
+          </div>
+          <div class="pb-phrase-actions">
+            <button class="pb-action-btn" onclick="translatePhrase(this)" data-phrase="{{ phrase }}">🌐 Translate</button>
+            <button class="pb-action-btn" onclick="speakPhrase(this)">🔊 Listen</button>
+            <button class="pb-action-btn" onclick="usePhrase('{{ phrase|escapejs }}')">↗ Use</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+const TRANSLATE_URL = '{% url "translator:translate" %}';
+
+async function translatePhrase(btn) {
+  const phrase = btn.dataset.phrase;
+  const targetLang = document.getElementById('pbTargetLang').value;
+  const card = btn.closest('.pb-phrase-card');
+  const resultDiv = card.querySelector('.pb-phrase-translated');
+  resultDiv.innerHTML = '<span style="color:var(--text-muted)">⟳ Translating…</span>';
+
+  try {
+    const resp = await fetch(TRANSLATE_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken': CSRF_TOKEN},
+      body: JSON.stringify({text: phrase, source_lang: 'en', target_lang: targetLang})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      resultDiv.textContent = data.translated_text;
+      resultDiv.style.color = 'var(--accent)';
+      resultDiv.dataset.translated = data.translated_text;
+    }
+  } catch(e) {
+    resultDiv.innerHTML = '<span style="color:var(--danger)">Failed</span>';
+  }
+}
+
+document.getElementById('pbTranslateAll').addEventListener('click', async function() {
+  const btns = document.querySelectorAll('.pb-action-btn[onclick^="translatePhrase"]');
+  this.disabled = true;
+  this.querySelector('.btn-text').textContent = `Translating ${btns.length} phrases…`;
+  this.querySelector('.btn-loader').style.display = 'inline-block';
+  for (const btn of btns) {
+    await translatePhrase(btn);
+  }
+  this.disabled = false;
+  this.querySelector('.btn-text').textContent = 'Translate All Phrases';
+  this.querySelector('.btn-loader').style.display = 'none';
+  showToast('✅ All phrases translated!');
+});
+
+function speakPhrase(btn) {
+  const card = btn.closest('.pb-phrase-card');
+  const translated = card.querySelector('.pb-phrase-translated');
+  const text = translated.dataset.translated || card.querySelector('.pb-phrase-en').textContent;
+  const lang = document.getElementById('pbTargetLang').value;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang;
+  window.speechSynthesis.speak(u);
+}
+
+function usePhrase(phrase) {
+  window.location.href = `/?phrase=${encodeURIComponent(phrase)}`;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+{% endblock %}
